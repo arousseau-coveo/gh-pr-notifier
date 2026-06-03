@@ -11,10 +11,9 @@
   "notifyComments": true,
   "ignoreAuthors": ["renovate-coveo", "stepsecurity-app"],
 
-  "_paths_comment": "ADVANCED — usually OMIT these. They auto-default correctly: editor settings under ~/Library/Application Support/Code, state+icon next to the script, gh/terminal-notifier resolved from the plist/PATH. Set them only to override, using REAL absolute paths (the <...> below are placeholders, not valid values).",
+  "_paths_comment": "ADVANCED — usually OMIT these. They auto-default correctly: editor settings under ~/Library/Application Support/Code, state next to the script, gh/terminal-notifier resolved from the plist/PATH. Set them only to override, using REAL absolute paths (the <...> below are placeholders, not valid values).",
   "editorSettingsPath": "<abs path to your editor settings.json>",
   "stateDir": "<abs path to a writable state dir>",
   "ghBin": "<abs path to gh>",
-  "notifierBin": "<abs path to terminal-notifier>",
-  "iconPath": "<abs path to a PNG>"
+  "notifierBin": "<abs path to terminal-notifier>"
 }

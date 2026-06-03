@@ -34,9 +34,6 @@ const STATE_DIR = pick("STATE_DIR", "stateDir", HERE); // defaults next to the s
 const STATE_FILE = join(STATE_DIR, "state.json");
 const GH = pick("GH_BIN", "ghBin", "gh");
 const NOTIFIER = pick("NOTIFIER_BIN", "notifierBin", "terminal-notifier");
-// Notification icon (terminal-notifier -appIcon). Defaults to the bundled icon.png; set to "" to
-// disable, or point at any image. Edit icon.svg + re-run rsvg-convert to change the bundled one.
-const ICON = pick("ICON_PATH", "iconPath", join(HERE, "icon.png"));
 
 const REVIEW_QUEUE_LABEL = pick("REVIEW_QUEUE_LABEL", "reviewQueueLabel", "🔍 Needs my review (no bots)");
 const MY_PRS_LABEL = pick("MY_PRS_LABEL", "myPrsLabel", "My PRs");
@@ -103,7 +100,6 @@ function notify({ title, subtitle, message, url, group }) {
   const open = safeOpenUrl(url);
   const body = open ? `${message}\n${open}` : message;
   const args = ["-title", title, "-subtitle", subtitle || "", "-message", body];
-  if (ICON && existsSync(ICON)) args.push("-appIcon", ICON);
   if (group) args.push("-group", group);
   if (open) args.push("-open", open);
   try { execFileSync(NOTIFIER, args, { stdio: "ignore" }); }
