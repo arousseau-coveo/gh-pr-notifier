@@ -30,7 +30,7 @@ const SETTINGS = pick("EDITOR_SETTINGS", "editorSettingsPath",
 const STATE_DIR = pick("STATE_DIR", "stateDir", join(homedir(), ".local/share/gh-pr-notifier"));
 const STATE_FILE = join(STATE_DIR, "state.json");
 const GH = pick("GH_BIN", "ghBin", "gh");
-const NOTIFIER = pick("NOTIFIER_BIN", "notifierBin", "terminal-notifier");
+const OSASCRIPT = "/usr/bin/osascript"; // system binary; no third-party notifier dependency
 
 const REVIEW_QUEUE_LABEL = pick("REVIEW_QUEUE_LABEL", "reviewQueueLabel", "🔍 Needs my review (no bots)");
 const MY_PRS_LABEL = pick("MY_PRS_LABEL", "myPrsLabel", "My PRs");
@@ -50,8 +50,6 @@ const isBot = (login) => !login || /\[bot\]$/i.test(login) || /\bbot\b/i.test(lo
 
 // "owner/name" with only the chars GitHub actually allows in each segment.
 const isValidRepo = (r) => /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(r);
-// Only ever hand terminal-notifier an https URL to open (defense-in-depth vs file:/javascript:).
-const safeOpenUrl = (u) => (typeof u === "string" && /^https:\/\//.test(u) ? u : null);
 
 function gh(path, args = []) {
   const out = execFileSync(GH, ["api", ...args, path], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
@@ -63,14 +61,20 @@ function search(query) {
   return gh("search/issues", ["-X", "GET", "-f", "per_page=100", "-f", `q=${query}`]).items || [];
 }
 
-function notify({ title, subtitle, message, url, group }) {
-  // Args are passed as an array (no shell), and each untrusted value occupies a single
-  // slot already claimed as a flag value — so a crafted PR title cannot inject a new flag.
-  const args = ["-title", title, "-subtitle", subtitle || "", "-message", message, "-group", group];
-  const open = safeOpenUrl(url);
-  if (open) args.push("-open", open); // only ever open an https URL
-  try { execFileSync(NOTIFIER, args, { stdio: "ignore" }); }
-  catch (e) { console.error("notify failed:", e.message); }
+function notify({ title, subtitle, message }) {
+  // Native macOS notification via osascript. Untrusted values (PR titles, logins) are passed as
+  // AppleScript `argv` items — NOT interpolated into the script source — so a crafted title
+  // cannot inject AppleScript. (osascript notifications have no click-to-open; banner only.)
+  try {
+    execFileSync(OSASCRIPT, [
+      "-e", "on run argv",
+      "-e", "display notification (item 1 of argv) with title (item 2 of argv) subtitle (item 3 of argv)",
+      "-e", "end run",
+      "--", message || "", title || "", subtitle || "",
+    ], { stdio: "ignore" });
+  } catch (e) {
+    console.error("notify failed:", e.message);
+  }
 }
 
 // Resolve the two search queries. A directly-configured query wins; otherwise look it up by
@@ -130,13 +134,7 @@ function main() {
       state.reviewQueue.push(it.html_url);
       if (!firstRun && !prevSet.has(it.html_url)) {
         const repo = it.repository_url.split("/repos/")[1] || "";
-        notify({
-          title: "🔍 PR needs your review",
-          subtitle: repo,
-          message: it.title,
-          url: it.html_url,
-          group: `review-${it.html_url}`,
-        });
+        notify({ title: "🔍 PR needs your review", subtitle: repo, message: it.title });
       }
     }
   }
@@ -167,13 +165,7 @@ function main() {
         if (!firstRun && !prevReviews[id]) {
           const verb = r.state === "CHANGES_REQUESTED" ? "requested changes"
                      : r.state === "APPROVED" ? "approved" : "commented on";
-          notify({
-            title: `${reviewer} ${verb} your PR`,
-            subtitle: `${repo}#${num}`,
-            message: it.title,
-            url: r.html_url || it.html_url,
-            group: `myreview-${id}`,
-          });
+          notify({ title: `${reviewer} ${verb} your PR`, subtitle: `${repo}#${num}`, message: it.title });
         }
       }
     }

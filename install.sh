@@ -10,23 +10,22 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 INTERVAL="${INTERVAL:-300}"   # override: INTERVAL=120 ./install.sh
 chmod +x "$SCRIPT_DIR/run.sh" "$SCRIPT_DIR/set-token.sh" "$SCRIPT_DIR/poll.mjs" 2>/dev/null || true
 
-# --- dependency check ---
+# --- dependency check (notifications use system /usr/bin/osascript; no notifier dependency) ---
 missing=0
-for bin in node gh terminal-notifier; do
+for bin in node gh; do
   if ! command -v "$bin" >/dev/null 2>&1; then
     echo "MISSING: $bin"; missing=1
   fi
 done
 if [ "$missing" -ne 0 ]; then
-  echo "Install missing deps first (e.g. 'brew install terminal-notifier gh node') and re-run." >&2
+  echo "Install missing deps first (e.g. 'brew install gh node') and re-run." >&2
   exit 1
 fi
 
 NODE_BIN="$(command -v node)"
-# PATH for launchd: the dirs holding our tools + system defaults.
 GH_BIN="$(command -v gh)"
-NOTIFIER_BIN="$(command -v terminal-notifier)"
-BIN_DIRS="$(dirname "$NODE_BIN"):$(dirname "$GH_BIN"):$(dirname "$NOTIFIER_BIN")"
+# PATH for launchd: the dirs holding our tools + system defaults.
+BIN_DIRS="$(dirname "$NODE_BIN"):$(dirname "$GH_BIN")"
 LAUNCHD_PATH="$(echo "$BIN_DIRS" | tr ':' '\n' | sort -u | paste -sd: -):/usr/bin:/bin:/usr/sbin:/sbin"
 
 if ! gh auth status >/dev/null 2>&1; then
@@ -55,8 +54,6 @@ cat > "$PLIST" <<EOF
         <string>$LAUNCHD_PATH</string>
         <key>GH_BIN</key>
         <string>$GH_BIN</string>
-        <key>NOTIFIER_BIN</key>
-        <string>$NOTIFIER_BIN</string>
     </dict>
     <key>StartInterval</key>
     <integer>$INTERVAL</integer>
@@ -104,8 +101,6 @@ if [ -n "$SLEEPWATCHER" ]; then
         <string>$LAUNCHD_PATH</string>
         <key>GH_BIN</key>
         <string>$GH_BIN</string>
-        <key>NOTIFIER_BIN</key>
-        <string>$NOTIFIER_BIN</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
