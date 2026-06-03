@@ -87,9 +87,9 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
 
 - **No VS Code?** Set `reviewQueueQuery` / `myPrsQuery` directly and `settings.json` is never read.
 - **Add/remove bots / stop notifying on approvals:** edit the query / `notifyReviewStates`.
-- **Change the notification icon:** replace `icon.png`, or edit `icon.svg` and re-render with
-  `rsvg-convert -w 512 -h 512 icon.svg -o icon.png`, or set `iconPath` to any image. Use `ICON_PATH=""`
-  / `"iconPath": ""` to fall back to terminal-notifier's default icon.
+- **Change the notification icon:** replace `icon.png` (square PNG, ~512px is plenty), or set
+  `iconPath` to any image. Use `ICON_PATH=""` / `"iconPath": ""` to fall back to terminal-notifier's
+  default icon.
 
 ## Security notes
 
