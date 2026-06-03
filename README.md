@@ -25,8 +25,10 @@ state silently so there's no backlog spam.
 
 - **Every `StartInterval`** (default 300s) — the steady-state poll.
 - **At login** — `RunAtLoad` on the main agent fires an immediate sync.
-- **On wake from sleep** — a second LaunchAgent runs `sleepwatcher`, which triggers `wake-hook.sh`
-  (an immediate sync) the moment the Mac wakes. Optional; skipped if `sleepwatcher` isn't installed.
+- **On wake from sleep** — a second LaunchAgent runs `sleepwatcher`, which triggers an immediate
+  sync the moment the Mac wakes. Optional; skipped if `sleepwatcher` isn't installed.
+
+Both agents launch via `run.sh`, which injects the scoped token (below) and then runs `poll.mjs`.
 
 ## Requirements
 
@@ -83,9 +85,26 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
 
 ## Security notes
 
+- **Least-privilege token (recommended).** The agent runs every few minutes with whatever
+  `gh` token it has. Your default `gh` login is typically broad (`repo`, `workflow` — read/write
+  to all repos + CI), which is far more than this read-only tool needs. To shrink the blast
+  radius, store a dedicated **fine-grained, read-only PAT** (Pull requests: Read, Metadata: Read)
+  and the agent will use only that:
+
+  ```sh
+  ./set-token.sh   # paste the PAT (hidden); stored in the login keychain, not in a plist
+  ```
+
+  `run.sh` exports it as `GH_TOKEN` for the agents only — your interactive `gh` is untouched.
+  If no token is stored, it falls back to your normal `gh` auth (with a warning).
+  *Caveat:* orgs that enforce SSO / fine-grained-PAT approval require you to authorize the token
+  for that org; if the org blocks PATs entirely, this isolation can't cover its private repos.
+- **No language dependencies.** `poll.mjs` uses only Node built-ins — no npm tree to compromise.
+- **Pinned binaries.** `brew pin node gh terminal-notifier sleepwatcher` prevents a `brew upgrade`
+  from silently swapping in a tampered version (unpin to take security updates).
 - All subprocess calls use argv arrays (no shell); untrusted PR titles/logins can't inject flags
-  or shell commands. `terminal-notifier`'s `-execute` is never used, and `-open` only ever
-  receives an `https://` URL.
+  or shell commands. `terminal-notifier`'s `-execute` (arbitrary shell) is **never** used; only
+  `-open` is, which is macOS's native open-URL (LaunchServices), and only with an `https://` URL.
 - Repo/PR-number values from the API are validated before being placed in an API path.
 - `install.sh` pins **absolute** `gh`/`terminal-notifier` paths into the plist (no `PATH` hijack).
 - State/log hold internal repo names + PR titles, so they're created `0600` in a `0700` dir.

@@ -5,9 +5,10 @@ set -euo pipefail
 
 LABEL="com.arousseau.gh-pr-notifier"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-POLL="$SCRIPT_DIR/poll.mjs"
+RUN="$SCRIPT_DIR/run.sh"   # entrypoint: injects scoped GH_TOKEN, then runs poll.mjs
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 INTERVAL="${INTERVAL:-300}"   # override: INTERVAL=120 ./install.sh
+chmod +x "$SCRIPT_DIR/run.sh" "$SCRIPT_DIR/set-token.sh" "$SCRIPT_DIR/poll.mjs" 2>/dev/null || true
 
 # --- dependency check ---
 missing=0
@@ -46,8 +47,7 @@ cat > "$PLIST" <<EOF
     <string>$LABEL</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$NODE_BIN</string>
-        <string>$POLL</string>
+        <string>$RUN</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -85,7 +85,6 @@ for p in "$(command -v sleepwatcher 2>/dev/null || true)" /opt/homebrew/sbin/sle
 done
 
 if [ -n "$SLEEPWATCHER" ]; then
-  chmod +x "$SCRIPT_DIR/wake-hook.sh"
   cat > "$WAKE_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -97,7 +96,7 @@ if [ -n "$SLEEPWATCHER" ]; then
     <array>
         <string>$SLEEPWATCHER</string>
         <string>-w</string>
-        <string>$SCRIPT_DIR/wake-hook.sh</string>
+        <string>$RUN</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -121,7 +120,7 @@ if [ -n "$SLEEPWATCHER" ]; then
 EOF
   launchctl unload "$WAKE_PLIST" 2>/dev/null || true
   launchctl load "$WAKE_PLIST"
-  echo "Installed and loaded $WAKE_LABEL (sleepwatcher -> wake-hook.sh on wake)."
+  echo "Installed and loaded $WAKE_LABEL (sleepwatcher -> run.sh on wake)."
 else
   echo "NOTE: sleepwatcher not found; wake-from-sleep trigger skipped."
   echo "      Install it with 'brew install sleepwatcher' and re-run for instant sync on wake."
