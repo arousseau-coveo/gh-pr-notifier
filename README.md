@@ -27,8 +27,9 @@ State lives in `state.json` (gitignored); first run seeds state silently so ther
 
 - **Every `StartInterval`** (default 300s) — the steady-state poll.
 - **At login** — `RunAtLoad` on the main agent fires an immediate sync.
-- **On wake from sleep** — a second LaunchAgent runs `sleepwatcher`, which triggers an immediate
-  sync the moment the Mac wakes. Optional; skipped if `sleepwatcher` isn't installed.
+- **On wake from sleep** — handled by `launchd` itself: a `StartInterval` tick that comes due while
+  the Mac is asleep runs right after it wakes. No extra agent and **no Input Monitoring permission**.
+  (After a sleep shorter than the interval, the next sync is just the normal tick.)
 
 Both agents launch via `run.sh`, which injects the scoped token (below) and then runs `poll.mjs`.
 
@@ -37,7 +38,6 @@ Both agents launch via `run.sh`, which injects the scoped token (below) and then
 - [`gh`](https://cli.github.com/) — authenticated (`gh auth login`)
 - `node` (ESM, no npm deps)
 - `osascript` — ships with macOS (no install)
-- [`sleepwatcher`](https://www.bernhard-baehr.de/) (optional) — `brew install sleepwatcher`, for instant sync on wake
 
 ## Install
 
@@ -105,7 +105,7 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
 - **No third-party notifier.** Notifications use the system `osascript`; there's no
   unmaintained/unvetted notifier binary in the dependency set. (terminal-notifier was dropped —
   last release 2017; alerter is maintained but only ships as an unvetted prebuilt binary.)
-- **Pinned binaries.** `brew pin node gh sleepwatcher` prevents a `brew upgrade` from silently
+- **Pinned binaries.** `brew pin node gh` prevents a `brew upgrade` from silently
   swapping in a tampered version (unpin to take security updates).
 - All subprocess calls use argv arrays (no shell); untrusted PR titles/logins can't inject shell
   commands. Notification text is passed to `osascript` as AppleScript **`argv` items**, not

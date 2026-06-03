@@ -73,52 +73,14 @@ echo "Installed and loaded $LABEL (interval ${INTERVAL}s, also runs at login via
 echo "Plist: $PLIST"
 echo "Logs:  $SCRIPT_DIR/poll.log"
 
-# --- wake-from-sleep trigger (optional, needs sleepwatcher) ---
-WAKE_LABEL="$LABEL.wake"
-WAKE_PLIST="$HOME/Library/LaunchAgents/$WAKE_LABEL.plist"
-SLEEPWATCHER=""
-for p in "$(command -v sleepwatcher 2>/dev/null || true)" /opt/homebrew/sbin/sleepwatcher /usr/local/sbin/sleepwatcher; do
-  [ -n "$p" ] && [ -x "$p" ] && SLEEPWATCHER="$p" && break
-done
-
-if [ -n "$SLEEPWATCHER" ]; then
-  cat > "$WAKE_PLIST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>$WAKE_LABEL</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$SLEEPWATCHER</string>
-        <string>-w</string>
-        <string>$RUN</string>
-    </array>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>$LAUNCHD_PATH</string>
-        <key>GH_BIN</key>
-        <string>$GH_BIN</string>
-    </dict>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>$SCRIPT_DIR/poll.log</string>
-    <key>StandardErrorPath</key>
-    <string>$SCRIPT_DIR/poll.log</string>
-</dict>
-</plist>
-EOF
-  launchctl unload "$WAKE_PLIST" 2>/dev/null || true
-  launchctl load "$WAKE_PLIST"
-  echo "Installed and loaded $WAKE_LABEL (sleepwatcher -> run.sh on wake)."
-else
-  echo "NOTE: sleepwatcher not found; wake-from-sleep trigger skipped."
-  echo "      Install it with 'brew install sleepwatcher' and re-run for instant sync on wake."
+# Wake-from-sleep: handled natively by launchd. A StartInterval job that comes due while the Mac
+# is asleep runs right after it wakes — so no extra agent (and no Input Monitoring permission) is
+# needed. Remove any sleepwatcher-based wake agent left by older installs.
+OLD_WAKE_PLIST="$HOME/Library/LaunchAgents/$LABEL.wake.plist"
+if [ -f "$OLD_WAKE_PLIST" ]; then
+  launchctl unload "$OLD_WAKE_PLIST" 2>/dev/null || true
+  rm -f "$OLD_WAKE_PLIST"
+  echo "Removed legacy sleepwatcher wake agent (wake sync is now handled by launchd)."
 fi
 
-echo "Uninstall: launchctl unload \"$PLIST\" \"$WAKE_PLIST\" 2>/dev/null; rm -f \"$PLIST\" \"$WAKE_PLIST\""
+echo "Uninstall: launchctl unload \"$PLIST\" 2>/dev/null; rm -f \"$PLIST\""
