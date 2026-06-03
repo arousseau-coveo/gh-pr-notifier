@@ -1,5 +1,5 @@
 {
-  "_comment": "Optional. Copy to ~/.config/gh-pr-notifier/config.json (or point GH_PR_NOTIFIER_CONFIG at it). Every key is optional; precedence is env var > this file > built-in default. Delete keys you don't override.",
+  "_comment": "TEMPLATE ONLY — the tool does NOT read this file. To override defaults, copy it to ~/.config/gh-pr-notifier/config.json (or set GH_PR_NOTIFIER_CONFIG). Every key is optional; precedence is env var > config.json > built-in default. Keep ONLY the keys you want to change and delete the rest. With no config.json at all, sensible defaults are used.",
 
   "reviewQueueLabel": "🔍 Needs my review (no bots)",
   "myPrsLabel": "My PRs",
@@ -11,10 +11,10 @@
   "notifyComments": true,
   "ignoreAuthors": ["renovate-coveo", "stepsecurity-app"],
 
-  "editorSettingsPath": "/Users/you/Library/Application Support/Code/User/settings.json",
-  "stateDir": "/Users/you/Workspace/gh-pr-notifier",
-  "ghBin": "/opt/homebrew/bin/gh",
-  "notifierBin": "/opt/homebrew/bin/terminal-notifier",
-
-  "iconPath": "/Users/you/Workspace/gh-pr-notifier/icon.png"
+  "_paths_comment": "ADVANCED — usually OMIT these. They auto-default correctly: editor settings under ~/Library/Application Support/Code, state+icon next to the script, gh/terminal-notifier resolved from the plist/PATH. Set them only to override, using REAL absolute paths (the <...> below are placeholders, not valid values).",
+  "editorSettingsPath": "<abs path to your editor settings.json>",
+  "stateDir": "<abs path to a writable state dir>",
+  "ghBin": "<abs path to gh>",
+  "notifierBin": "<abs path to terminal-notifier>",
+  "iconPath": "<abs path to a PNG>"
 }
