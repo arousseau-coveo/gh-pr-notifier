@@ -7,8 +7,6 @@ Two notification streams, each diffed between runs so only **new** items fire:
 1. **PRs needing my review** — read from a labeled query in VS Code settings (bots excluded by the query itself).
 2. **Review activity on my PRs** — `APPROVED` / `CHANGES_REQUESTED` / `COMMENTED` reviews on my own PRs (bot reviewers skipped).
 
-Clicking a notification opens the PR.
-
 ## How it works
 
 `poll.mjs` reads `~/Library/Application Support/Code/User/settings.json`, pulls two queries from
