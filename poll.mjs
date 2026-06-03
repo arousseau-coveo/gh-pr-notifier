@@ -30,7 +30,7 @@ const pick = (envKey, fileKey, dflt) => env(envKey) ?? FILE[fileKey] ?? dflt;
 
 const SETTINGS = pick("EDITOR_SETTINGS", "editorSettingsPath",
   join(homedir(), "Library/Application Support/Code/User/settings.json"));
-const STATE_DIR = pick("STATE_DIR", "stateDir", join(homedir(), ".local/share/gh-pr-notifier"));
+const STATE_DIR = pick("STATE_DIR", "stateDir", HERE); // defaults next to the script (gitignored)
 const STATE_FILE = join(STATE_DIR, "state.json");
 const GH = pick("GH_BIN", "ghBin", "gh");
 const NOTIFIER = pick("NOTIFIER_BIN", "notifierBin", "terminal-notifier");
