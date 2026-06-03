@@ -62,7 +62,55 @@ EOF
 
 launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
-echo "Installed and loaded $LABEL (interval ${INTERVAL}s)."
+echo "Installed and loaded $LABEL (interval ${INTERVAL}s, also runs at login via RunAtLoad)."
 echo "Plist: $PLIST"
 echo "Logs:  $SCRIPT_DIR/poll.log"
-echo "Uninstall: launchctl unload \"$PLIST\" && rm \"$PLIST\""
+
+# --- wake-from-sleep trigger (optional, needs sleepwatcher) ---
+WAKE_LABEL="$LABEL.wake"
+WAKE_PLIST="$HOME/Library/LaunchAgents/$WAKE_LABEL.plist"
+SLEEPWATCHER=""
+for p in "$(command -v sleepwatcher 2>/dev/null || true)" /opt/homebrew/sbin/sleepwatcher /usr/local/sbin/sleepwatcher; do
+  [ -n "$p" ] && [ -x "$p" ] && SLEEPWATCHER="$p" && break
+done
+
+if [ -n "$SLEEPWATCHER" ]; then
+  chmod +x "$SCRIPT_DIR/wake-hook.sh"
+  cat > "$WAKE_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$WAKE_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$SLEEPWATCHER</string>
+        <string>-w</string>
+        <string>$SCRIPT_DIR/wake-hook.sh</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>$LAUNCHD_PATH</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$SCRIPT_DIR/poll.log</string>
+    <key>StandardErrorPath</key>
+    <string>$SCRIPT_DIR/poll.log</string>
+</dict>
+</plist>
+EOF
+  launchctl unload "$WAKE_PLIST" 2>/dev/null || true
+  launchctl load "$WAKE_PLIST"
+  echo "Installed and loaded $WAKE_LABEL (sleepwatcher -> wake-hook.sh on wake)."
+else
+  echo "NOTE: sleepwatcher not found; wake-from-sleep trigger skipped."
+  echo "      Install it with 'brew install sleepwatcher' and re-run for instant sync on wake."
+fi
+
+echo "Uninstall: launchctl unload \"$PLIST\" \"$WAKE_PLIST\" 2>/dev/null; rm -f \"$PLIST\" \"$WAKE_PLIST\""

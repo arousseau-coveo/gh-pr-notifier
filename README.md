@@ -21,11 +21,19 @@ Clicking a notification opens the PR.
 posts notifications with `terminal-notifier`. State lives in `state.json` (gitignored); first run seeds
 state silently so there's no backlog spam.
 
+## When it syncs
+
+- **Every `StartInterval`** (default 300s) — the steady-state poll.
+- **At login** — `RunAtLoad` on the main agent fires an immediate sync.
+- **On wake from sleep** — a second LaunchAgent runs `sleepwatcher`, which triggers `wake-hook.sh`
+  (an immediate sync) the moment the Mac wakes. Optional; skipped if `sleepwatcher` isn't installed.
+
 ## Requirements
 
 - [`gh`](https://cli.github.com/) — authenticated (`gh auth login`)
 - [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) — `brew install terminal-notifier`
 - `node` (ESM, no npm deps)
+- [`sleepwatcher`](https://www.bernhard-baehr.de/) (optional) — `brew install sleepwatcher`, for instant sync on wake
 
 ## Install
 
