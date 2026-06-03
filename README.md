@@ -93,20 +93,22 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
 
 ## Security notes
 
-- **Least-privilege token (recommended).** The agent runs every few minutes with whatever
-  `gh` token it has. Your default `gh` login is typically broad (`repo`, `workflow` — read/write
-  to all repos + CI), which is far more than this read-only tool needs. To shrink the blast
-  radius, store a dedicated **fine-grained, read-only PAT** (Pull requests: Read, Metadata: Read)
-  and the agent will use only that:
+- **Auth (default: your `gh` login).** The agent uses your normal `gh` OAuth token. That's fine
+  for a read-only tool, and it's the expected mode when an org disables fine-grained PATs.
+- **Optional hardening — least-privilege token.** Your `gh` login is typically broad (`repo`,
+  `workflow` — read/write all repos + CI). *If your org allows fine-grained PATs*, you can shrink
+  the blast radius: create a **fine-grained, read-only PAT** (Resource owner = the org you review
+  in; Pull requests: Read, Metadata: Read) and store it:
 
   ```sh
   ./set-token.sh   # paste the PAT (hidden); stored in the login keychain, not in a plist
   ```
 
-  `run.sh` exports it as `GH_TOKEN` for the agents only — your interactive `gh` is untouched.
-  If no token is stored, it falls back to your normal `gh` auth (with a warning).
-  *Caveat:* orgs that enforce SSO / fine-grained-PAT approval require you to authorize the token
-  for that org; if the org blocks PATs entirely, this isolation can't cover its private repos.
+  `run.sh` then exports it as `GH_TOKEN` for the agent only — your interactive `gh` is untouched;
+  otherwise it falls back silently to your `gh` login. **Caveat:** many orgs (e.g. `coveo-platform`)
+  **block fine-grained PATs**, in which case this isn't available and there's no read-only
+  alternative (classic PATs with `repo` are read+write, i.e. no narrower) — running on `gh` auth
+  is then the correct setup.
 - **No language dependencies.** `poll.mjs` uses only Node built-ins — no npm tree to compromise.
 - **URL open is host-locked.** Click-to-open passes through a parsed `https` + `github.com`
   allowlist (`safeOpenUrl`), and the URL is shown in the notification body. The tool cannot open
