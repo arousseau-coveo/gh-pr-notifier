@@ -50,9 +50,14 @@ const parseStates = (v) => (Array.isArray(v) ? v : String(v).split(","))
   .map((s) => s.trim().toUpperCase()).filter(Boolean);
 const NOTIFY_REVIEW_STATES = new Set(parseStates(
   env("NOTIFY_REVIEW_STATES") ?? FILE.notifyReviewStates ?? "APPROVED,CHANGES_REQUESTED,COMMENTED"));
+
+// Also notify on conversation comments + inline-thread replies on my PRs (not just submitted reviews).
+const truthy = (v, dflt) => (v === undefined ? dflt : !(v === false || v === "false" || v === "0" || v === ""));
+const NOTIFY_COMMENTS = truthy(env("NOTIFY_COMMENTS") ?? FILE.notifyComments, true);
 // -------------------------------------------------------------------------
 
 const isBot = (login) => !login || /\[bot\]$/i.test(login) || /\bbot\b/i.test(login);
+const clip = (s, n = 140) => (s || "").replace(/\s+/g, " ").trim().slice(0, n);
 
 // "owner/name" with only the chars GitHub actually allows in each segment.
 const isValidRepo = (r) => /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(r);
@@ -137,7 +142,7 @@ function main() {
 
   const prev = loadState();
   const firstRun = prev === null;
-  const state = { reviewQueue: [], myPrReviews: {} };
+  const state = { reviewQueue: [], myPrReviews: {}, myPrComments: {} };
 
   // ---- Stream 1: needs my review ----
   if (reviewQueue) {
@@ -158,6 +163,7 @@ function main() {
     const q = myPrs.replaceAll("${user}", login);
     const myItems = search(q);
     const prevReviews = prev?.myPrReviews || {};
+    const prevComments = prev?.myPrComments || {};
     for (const it of myItems) {
       const repo = (it.repository_url || "").split("/repos/")[1] || ""; // owner/name
       const num = it.number;
@@ -167,19 +173,47 @@ function main() {
         continue;
       }
       const [owner, name] = repo.split("/");
+      const api = (p) => gh(`repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/${p}?per_page=100`);
+
+      // Submitted reviews (approve / request-changes / summary comment).
       let reviews = [];
-      try { reviews = gh(`repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${num}/reviews?per_page=100`); }
-      catch (e) { console.error(`reviews ${repo}#${num}:`, e.message); continue; }
+      try { reviews = api(`pulls/${num}/reviews`); }
+      catch (e) { console.error(`reviews ${repo}#${num}:`, e.message); }
       for (const r of reviews) {
         const id = String(r.id);
         const reviewer = r.user?.login;
         if (!NOTIFY_REVIEW_STATES.has(r.state)) continue;
         if (reviewer === login || isBot(reviewer)) continue;
+        // An empty-bodied COMMENTED review is just a wrapper around inline comments/replies, which
+        // the comment streams below report with their actual content — skip to avoid double-notify.
+        if (r.state === "COMMENTED" && !clip(r.body)) continue;
         state.myPrReviews[id] = true; // remember it (bounded to currently-open PRs)
         if (!firstRun && !prevReviews[id]) {
-          const verb = r.state === "CHANGES_REQUESTED" ? "requested changes"
+          const verb = r.state === "CHANGES_REQUESTED" ? "requested changes on"
                      : r.state === "APPROVED" ? "approved" : "commented on";
-          notify({ title: `${reviewer} ${verb} your PR`, subtitle: `${repo}#${num}`, message: it.title, url: r.html_url || it.html_url, group: `myreview-${id}` });
+          notify({ title: `${reviewer} ${verb} your PR`, subtitle: `${repo}#${num}`, message: clip(r.body) || it.title, url: r.html_url || it.html_url, group: `myreview-${id}` });
+        }
+      }
+
+      // Conversation comments + inline-thread replies (the gap that submitted reviews miss).
+      if (NOTIFY_COMMENTS) {
+        for (const src of [
+          { path: `pulls/${num}/comments`, kp: "rc" },   // inline diff comments + replies
+          { path: `issues/${num}/comments`, kp: "ic" },  // conversation timeline
+        ]) {
+          let comments = [];
+          try { comments = api(src.path); }
+          catch (e) { console.error(`${src.path} ${repo}#${num}:`, e.message); continue; }
+          for (const c of comments) {
+            const key = `${src.kp}:${c.id}`;
+            const author = c.user?.login;
+            if (author === login || isBot(author)) continue;
+            state.myPrComments[key] = true;
+            if (!firstRun && !prevComments[key]) {
+              const verb = c.in_reply_to_id ? "replied on" : "commented on";
+              notify({ title: `${author} ${verb} your PR`, subtitle: `${repo}#${num}`, message: clip(c.body) || it.title, url: c.html_url || it.html_url, group: `mycomment-${key}` });
+            }
+          }
         }
       }
     }
@@ -188,7 +222,7 @@ function main() {
   saveState(state);
   console.error(firstRun
     ? "First run: seeded state, no notifications sent."
-    : `OK: tracking ${state.reviewQueue.length} review-queue PRs, ${Object.keys(state.myPrReviews).length} my-PR reviews.`);
+    : `OK: tracking ${state.reviewQueue.length} review-queue PRs, ${Object.keys(state.myPrReviews).length} my-PR reviews, ${Object.keys(state.myPrComments).length} comments.`);
 }
 
 main();

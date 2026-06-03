@@ -5,7 +5,7 @@ Native macOS notifications for GitHub review work, driven by a `launchd` poller.
 Two notification streams, each diffed between runs so only **new** items fire:
 
 1. **PRs needing my review** — read from a labeled query in VS Code settings (bots excluded by the query itself).
-2. **Review activity on my PRs** — `APPROVED` / `CHANGES_REQUESTED` / `COMMENTED` reviews on my own PRs (bot reviewers skipped).
+2. **Review activity on my PRs** — submitted reviews (`APPROVED` / `CHANGES_REQUESTED` / `COMMENTED`), plus conversation comments and inline thread **replies** on my own PRs (bot authors skipped).
 
 ## How it works
 
@@ -79,6 +79,7 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
 | Review-queue query (direct, skips editor lookup) | `REVIEW_QUEUE_QUERY` | `reviewQueueQuery` | — |
 | My-PRs query (direct) | `MY_PRS_QUERY` | `myPrsQuery` | — |
 | Review states to notify on | `NOTIFY_REVIEW_STATES` | `notifyReviewStates` | `APPROVED,CHANGES_REQUESTED,COMMENTED` |
+| Notify on comments/replies on my PRs | `NOTIFY_COMMENTS` | `notifyComments` | `true` |
 | Editor settings.json path | `EDITOR_SETTINGS` | `editorSettingsPath` | VS Code path |
 | State dir | `STATE_DIR` | `stateDir` | `~/.local/share/gh-pr-notifier` |
 | `gh` binary | `GH_BIN` | `ghBin` | from `PATH` |
@@ -127,6 +128,11 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
 
 ## Limitations
 
-- Stream 2 only catches submitted **reviews** (`/pulls/{n}/reviews`), not standalone conversation/inline comments.
+- Stream 2 covers submitted **reviews** (`/pulls/{n}/reviews`), **conversation comments**
+  (`/issues/{n}/comments`), and **inline comments + thread replies** (`/pulls/{n}/comments`).
+  An empty-bodied `COMMENTED` review (the wrapper around inline comments) is skipped so a review
+  with inline comments doesn't double-notify. Each endpoint is capped at 100 items per PR (no
+  pagination), so a PR with 100+ comments could miss the newest — fine for normal PRs. Set
+  `NOTIFY_COMMENTS=false` to revert to reviews-only.
 - Bot detection is heuristic (`[bot]` suffix or `bot` in the login).
 - Notifications only appear while logged into the macOS session.
