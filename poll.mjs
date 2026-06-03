@@ -54,9 +54,23 @@ const NOTIFY_REVIEW_STATES = new Set(parseStates(
 // Also notify on conversation comments + inline-thread replies on my PRs (not just submitted reviews).
 const truthy = (v, dflt) => (v === undefined ? dflt : !(v === false || v === "false" || v === "0" || v === ""));
 const NOTIFY_COMMENTS = truthy(env("NOTIFY_COMMENTS") ?? FILE.notifyComments, true);
+
+// Extra bot authors to silence (machine-user bots that don't carry GitHub's Bot type or a "bot"
+// name, e.g. renovate-coveo, stepsecurity-app). Case-insensitive substring match. Comma-sep / array.
+const parseList = (v) => (Array.isArray(v) ? v : String(v).split(",")).map((s) => s.trim().toLowerCase()).filter(Boolean);
+const IGNORE_AUTHORS = parseList(env("IGNORE_AUTHORS") ?? FILE.ignoreAuthors ?? "");
 // -------------------------------------------------------------------------
 
-const isBot = (login) => !login || /\[bot\]$/i.test(login) || /\bbot\b/i.test(login);
+// Decide if a comment/review author is a bot. Takes the API `user` object so we can read its
+// `type` ("Bot" for GitHub Apps). Also catches "[bot]" suffix, names ending in "bot" (coveobot),
+// "bot" as a word, and the configurable IGNORE_AUTHORS denylist.
+function isBotUser(u) {
+  const login = (u?.login || "").toLowerCase();
+  if (!login) return true;
+  if (u?.type === "Bot") return true;
+  if (/\[bot\]$/.test(login) || /bot$/.test(login) || /\bbot\b/.test(login)) return true;
+  return IGNORE_AUTHORS.some((p) => login.includes(p));
+}
 const clip = (s, n = 140) => (s || "").replace(/\s+/g, " ").trim().slice(0, n);
 
 // "owner/name" with only the chars GitHub actually allows in each segment.
@@ -183,7 +197,7 @@ function main() {
         const id = String(r.id);
         const reviewer = r.user?.login;
         if (!NOTIFY_REVIEW_STATES.has(r.state)) continue;
-        if (reviewer === login || isBot(reviewer)) continue;
+        if (reviewer === login || isBotUser(r.user)) continue;
         // An empty-bodied COMMENTED review is just a wrapper around inline comments/replies, which
         // the comment streams below report with their actual content — skip to avoid double-notify.
         if (r.state === "COMMENTED" && !clip(r.body)) continue;
@@ -207,7 +221,7 @@ function main() {
           for (const c of comments) {
             const key = `${src.kp}:${c.id}`;
             const author = c.user?.login;
-            if (author === login || isBot(author)) continue;
+            if (author === login || isBotUser(c.user)) continue;
             state.myPrComments[key] = true;
             if (!firstRun && !prevComments[key]) {
               const verb = c.in_reply_to_id ? "replied on" : "commented on";

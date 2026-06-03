@@ -80,6 +80,7 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
 | My-PRs query (direct) | `MY_PRS_QUERY` | `myPrsQuery` | — |
 | Review states to notify on | `NOTIFY_REVIEW_STATES` | `notifyReviewStates` | `APPROVED,CHANGES_REQUESTED,COMMENTED` |
 | Notify on comments/replies on my PRs | `NOTIFY_COMMENTS` | `notifyComments` | `true` |
+| Extra bot authors to silence (substring) | `IGNORE_AUTHORS` | `ignoreAuthors` | — |
 | Editor settings.json path | `EDITOR_SETTINGS` | `editorSettingsPath` | VS Code path |
 | State dir | `STATE_DIR` | `stateDir` | `~/.local/share/gh-pr-notifier` |
 | `gh` binary | `GH_BIN` | `ghBin` | from `PATH` |
@@ -134,5 +135,10 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
   with inline comments doesn't double-notify. Each endpoint is capped at 100 items per PR (no
   pagination), so a PR with 100+ comments could miss the newest — fine for normal PRs. Set
   `NOTIFY_COMMENTS=false` to revert to reviews-only.
-- Bot detection is heuristic (`[bot]` suffix or `bot` in the login).
+- Bot detection (Stream 2): GitHub `type: "Bot"` (catches Apps like `dependabot[bot]`), plus names
+  with `[bot]` suffix / ending in `bot` (catches `coveobot`) / `bot` as a word, plus the
+  `ignoreAuthors` denylist (for machine-user bots like `renovate-coveo` that carry none of those).
+  Trade-off: a *human* whose login ends in "bot" (e.g. `talbot`) would also be filtered — an
+  accepted edge case, since there's no clean way to tell `coveobot` from `talbot` by name alone.
+  (Stream 1 excludes bots via the search query itself, e.g. `-author:app/dependabot`.)
 - Notifications only appear while logged into the macOS session.

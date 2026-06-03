@@ -9,6 +9,7 @@
 
   "notifyReviewStates": ["APPROVED", "CHANGES_REQUESTED", "COMMENTED"],
   "notifyComments": true,
+  "ignoreAuthors": ["renovate-coveo", "stepsecurity-app"],
 
   "editorSettingsPath": "/Users/you/Library/Application Support/Code/User/settings.json",
   "stateDir": "/Users/you/Workspace/gh-pr-notifier",
