@@ -12,5 +12,7 @@
   "editorSettingsPath": "/Users/you/Library/Application Support/Code/User/settings.json",
   "stateDir": "/Users/you/.local/share/gh-pr-notifier",
   "ghBin": "/opt/homebrew/bin/gh",
-  "notifierBin": "/opt/homebrew/bin/terminal-notifier"
+  "notifierBin": "/opt/homebrew/bin/terminal-notifier",
+
+  "iconPath": "/Users/you/.local/share/gh-pr-notifier/icon.png"
 }
