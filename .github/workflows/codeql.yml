@@ -1,0 +1,26 @@
+name: CodeQL
+
+# Static security analysis of poll.mjs. Free on public repos; on a PRIVATE repo this requires
+# GitHub Advanced Security (otherwise the upload step fails) — disable this workflow if you make
+# the repo private without GHAS.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * 1" # weekly
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v3
