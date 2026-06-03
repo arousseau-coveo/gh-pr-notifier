@@ -11,5 +11,6 @@
 
   "editorSettingsPath": "/Users/you/Library/Application Support/Code/User/settings.json",
   "stateDir": "/Users/you/.local/share/gh-pr-notifier",
-  "ghBin": "/opt/homebrew/bin/gh"
+  "ghBin": "/opt/homebrew/bin/gh",
+  "notifierBin": "/opt/homebrew/bin/terminal-notifier"
 }

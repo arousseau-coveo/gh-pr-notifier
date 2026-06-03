@@ -30,7 +30,7 @@ const SETTINGS = pick("EDITOR_SETTINGS", "editorSettingsPath",
 const STATE_DIR = pick("STATE_DIR", "stateDir", join(homedir(), ".local/share/gh-pr-notifier"));
 const STATE_FILE = join(STATE_DIR, "state.json");
 const GH = pick("GH_BIN", "ghBin", "gh");
-const OSASCRIPT = "/usr/bin/osascript"; // system binary; no third-party notifier dependency
+const NOTIFIER = pick("NOTIFIER_BIN", "notifierBin", "terminal-notifier");
 
 const REVIEW_QUEUE_LABEL = pick("REVIEW_QUEUE_LABEL", "reviewQueueLabel", "🔍 Needs my review (no bots)");
 const MY_PRS_LABEL = pick("MY_PRS_LABEL", "myPrsLabel", "My PRs");
@@ -51,6 +51,16 @@ const isBot = (login) => !login || /\[bot\]$/i.test(login) || /\bbot\b/i.test(lo
 // "owner/name" with only the chars GitHub actually allows in each segment.
 const isValidRepo = (r) => /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(r);
 
+// Hard allowlist for what we'll let the OS open: parsed (not regex-matched) and locked to
+// https + github.com host, so spoofs like github.com.evil.com or github.com@evil.com are rejected.
+function safeOpenUrl(u) {
+  try {
+    const x = new URL(u);
+    return x.protocol === "https:" && (x.hostname === "github.com" || x.hostname === "www.github.com")
+      ? x.href : null;
+  } catch { return null; }
+}
+
 function gh(path, args = []) {
   const out = execFileSync(GH, ["api", ...args, path], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   return JSON.parse(out);
@@ -61,20 +71,17 @@ function search(query) {
   return gh("search/issues", ["-X", "GET", "-f", "per_page=100", "-f", `q=${query}`]).items || [];
 }
 
-function notify({ title, subtitle, message }) {
-  // Native macOS notification via osascript. Untrusted values (PR titles, logins) are passed as
-  // AppleScript `argv` items — NOT interpolated into the script source — so a crafted title
-  // cannot inject AppleScript. (osascript notifications have no click-to-open; banner only.)
-  try {
-    execFileSync(OSASCRIPT, [
-      "-e", "on run argv",
-      "-e", "display notification (item 1 of argv) with title (item 2 of argv) subtitle (item 3 of argv)",
-      "-e", "end run",
-      "--", message || "", title || "", subtitle || "",
-    ], { stdio: "ignore" });
-  } catch (e) {
-    console.error("notify failed:", e.message);
-  }
+function notify({ title, subtitle, message, url, group }) {
+  // Args are passed as an array (no shell); untrusted values can't inject flags. The URL is shown
+  // in the body so you see the destination before clicking, and -open only ever receives a URL
+  // that passed the github.com allowlist. `-execute` (arbitrary shell) is never used.
+  const open = safeOpenUrl(url);
+  const body = open ? `${message}\n${open}` : message;
+  const args = ["-title", title, "-subtitle", subtitle || "", "-message", body];
+  if (group) args.push("-group", group);
+  if (open) args.push("-open", open);
+  try { execFileSync(NOTIFIER, args, { stdio: "ignore" }); }
+  catch (e) { console.error("notify failed:", e.message); }
 }
 
 // Resolve the two search queries. A directly-configured query wins; otherwise look it up by
@@ -134,7 +141,7 @@ function main() {
       state.reviewQueue.push(it.html_url);
       if (!firstRun && !prevSet.has(it.html_url)) {
         const repo = it.repository_url.split("/repos/")[1] || "";
-        notify({ title: "🔍 PR needs your review", subtitle: repo, message: it.title });
+        notify({ title: "🔍 PR needs your review", subtitle: repo, message: it.title, url: it.html_url, group: `review-${it.html_url}` });
       }
     }
   }
@@ -165,7 +172,7 @@ function main() {
         if (!firstRun && !prevReviews[id]) {
           const verb = r.state === "CHANGES_REQUESTED" ? "requested changes"
                      : r.state === "APPROVED" ? "approved" : "commented on";
-          notify({ title: `${reviewer} ${verb} your PR`, subtitle: `${repo}#${num}`, message: it.title });
+          notify({ title: `${reviewer} ${verb} your PR`, subtitle: `${repo}#${num}`, message: it.title, url: r.html_url || it.html_url, group: `myreview-${id}` });
         }
       }
     }

@@ -16,12 +16,14 @@ Two notification streams, each diffed between runs so only **new** items fire:
 - `My PRs`
 
 `${user}` in the queries is resolved via `gh api user`. It then calls the GitHub API through `gh` and
-posts notifications via the system `osascript` (`display notification`) — no third-party notifier.
-State lives in `state.json` (gitignored); first run seeds state silently so there's no backlog spam.
+posts notifications with `terminal-notifier`. State lives in `state.json` (gitignored); first run
+seeds state silently so there's no backlog spam.
 
-> **No click-to-open.** macOS notifications posted via `osascript` cannot carry a click action, so
-> the banner is informational only — open the PR from your bookmarked GitHub review filter. (This
-> was a deliberate trade-off to avoid depending on an unmaintained or unvetted notifier binary.)
+> **Click-to-open is host-locked.** The notification body shows the destination URL, and clicking
+> opens it via macOS LaunchServices — but only if the URL passes a hard allowlist (`https` +
+> `github.com` host, parsed not regex-matched). A non-GitHub or non-https URL is shown but **not**
+> made clickable, so the tool can never open anything but a GitHub PR. `terminal-notifier`'s
+> `-execute` (arbitrary shell) is never used.
 
 ## When it syncs
 
@@ -37,7 +39,7 @@ Both agents launch via `run.sh`, which injects the scoped token (below) and then
 
 - [`gh`](https://cli.github.com/) — authenticated (`gh auth login`)
 - `node` (ESM, no npm deps)
-- `osascript` — ships with macOS (no install)
+- [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) — `brew install terminal-notifier` (used `-open`-only, never `-execute`)
 
 ## Install
 
@@ -52,8 +54,7 @@ INTERVAL=120 ./install.sh # custom interval (seconds)
 `~/Library/LaunchAgents/`, and loads it. The script's own directory is where logs/state are written,
 so it runs from wherever you clone it.
 
-If notifications don't appear, allow them for **Script Editor** in System Settings → Notifications
-(osascript posts under that host identity).
+If notifications don't appear, allow them for **terminal-notifier** in System Settings → Notifications.
 
 ## Manage
 
@@ -81,6 +82,7 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
 | Editor settings.json path | `EDITOR_SETTINGS` | `editorSettingsPath` | VS Code path |
 | State dir | `STATE_DIR` | `stateDir` | `~/.local/share/gh-pr-notifier` |
 | `gh` binary | `GH_BIN` | `ghBin` | from `PATH` |
+| `terminal-notifier` binary | `NOTIFIER_BIN` | `notifierBin` | from `PATH` |
 
 - **No VS Code?** Set `reviewQueueQuery` / `myPrsQuery` directly and `settings.json` is never read.
 - **Add/remove bots / stop notifying on approvals:** edit the query / `notifyReviewStates`.
@@ -102,16 +104,16 @@ Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.jso
   *Caveat:* orgs that enforce SSO / fine-grained-PAT approval require you to authorize the token
   for that org; if the org blocks PATs entirely, this isolation can't cover its private repos.
 - **No language dependencies.** `poll.mjs` uses only Node built-ins — no npm tree to compromise.
-- **No third-party notifier.** Notifications use the system `osascript`; there's no
-  unmaintained/unvetted notifier binary in the dependency set. (terminal-notifier was dropped —
-  last release 2017; alerter is maintained but only ships as an unvetted prebuilt binary.)
-- **Pinned binaries.** `brew pin node gh` prevents a `brew upgrade` from silently
-  swapping in a tampered version (unpin to take security updates).
-- All subprocess calls use argv arrays (no shell); untrusted PR titles/logins can't inject shell
-  commands. Notification text is passed to `osascript` as AppleScript **`argv` items**, not
-  interpolated into the script source, so a crafted PR title cannot inject AppleScript.
+- **URL open is host-locked.** Click-to-open passes through a parsed `https` + `github.com`
+  allowlist (`safeOpenUrl`), and the URL is shown in the notification body. The tool cannot open
+  a non-GitHub or non-https URL. `terminal-notifier`'s `-execute` (arbitrary shell) is never used.
+- **Pinned binaries.** `brew pin node gh terminal-notifier` prevents a `brew upgrade` from silently
+  swapping in a tampered version (unpin to take security updates). terminal-notifier is
+  unmaintained (last release 2017) but distributed via homebrew/core with a checksummed bottle.
+- All subprocess calls use argv arrays (no shell); untrusted PR titles/logins can't inject flags
+  or shell commands.
 - Repo/PR-number values from the API are validated before being placed in an API path.
-- `install.sh` pins the **absolute** `gh` path into the plist (no `PATH` hijack).
+- `install.sh` pins the **absolute** `gh`/`terminal-notifier` paths into the plist (no `PATH` hijack).
 - State/log hold internal repo names + PR titles, so they're created `0600` in a `0700` dir.
 
 > **GitHub search caps results at 100 per query.** For a personal review queue that's never a
