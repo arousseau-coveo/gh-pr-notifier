@@ -23,7 +23,9 @@ fi
 
 NODE_BIN="$(command -v node)"
 # PATH for launchd: the dirs holding our tools + system defaults.
-BIN_DIRS="$(dirname "$NODE_BIN"):$(dirname "$(command -v gh)"):$(dirname "$(command -v terminal-notifier)")"
+GH_BIN="$(command -v gh)"
+NOTIFIER_BIN="$(command -v terminal-notifier)"
+BIN_DIRS="$(dirname "$NODE_BIN"):$(dirname "$GH_BIN"):$(dirname "$NOTIFIER_BIN")"
 LAUNCHD_PATH="$(echo "$BIN_DIRS" | tr ':' '\n' | sort -u | paste -sd: -):/usr/bin:/bin:/usr/sbin:/sbin"
 
 if ! gh auth status >/dev/null 2>&1; then
@@ -31,6 +33,10 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 
 mkdir -p "$HOME/Library/LaunchAgents"
+# State/log can contain internal repo names + PR titles: keep them owner-only.
+mkdir -p "$SCRIPT_DIR" && chmod 700 "$SCRIPT_DIR"
+: > "$SCRIPT_DIR/poll.log" 2>/dev/null || true
+chmod 600 "$SCRIPT_DIR/poll.log" 2>/dev/null || true
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -47,6 +53,10 @@ cat > "$PLIST" <<EOF
     <dict>
         <key>PATH</key>
         <string>$LAUNCHD_PATH</string>
+        <key>GH_BIN</key>
+        <string>$GH_BIN</string>
+        <key>NOTIFIER_BIN</key>
+        <string>$NOTIFIER_BIN</string>
     </dict>
     <key>StartInterval</key>
     <integer>$INTERVAL</integer>
@@ -93,6 +103,10 @@ if [ -n "$SLEEPWATCHER" ]; then
     <dict>
         <key>PATH</key>
         <string>$LAUNCHD_PATH</string>
+        <key>GH_BIN</key>
+        <string>$GH_BIN</string>
+        <key>NOTIFIER_BIN</key>
+        <string>$NOTIFIER_BIN</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

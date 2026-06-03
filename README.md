@@ -59,11 +59,39 @@ launchctl load   "$PLIST"   # resume (after editing plist or script)
 tail -f poll.log            # watch runs
 ```
 
-## Customize
+## Configure
 
-- **Add/remove bots:** edit the `🔍 Needs my review (no bots)` query in VS Code — single source of truth.
-- **Stop notifying on approvals:** remove `"APPROVED"` from `NOTIFY_REVIEW_STATES` in `poll.mjs`.
-- **Different editor settings path:** edit `SETTINGS` in `poll.mjs`.
+No code edits needed. Precedence for every setting is **env var > config file > built-in default**.
+
+Config file: `$GH_PR_NOTIFIER_CONFIG`, else `~/.config/gh-pr-notifier/config.json`. Copy
+`config.example.json` and keep only the keys you want to override.
+
+| Setting | Env var | Config key | Default |
+|---|---|---|---|
+| Review-queue query label | `REVIEW_QUEUE_LABEL` | `reviewQueueLabel` | `🔍 Needs my review (no bots)` |
+| My-PRs query label | `MY_PRS_LABEL` | `myPrsLabel` | `My PRs` |
+| Review-queue query (direct, skips editor lookup) | `REVIEW_QUEUE_QUERY` | `reviewQueueQuery` | — |
+| My-PRs query (direct) | `MY_PRS_QUERY` | `myPrsQuery` | — |
+| Review states to notify on | `NOTIFY_REVIEW_STATES` | `notifyReviewStates` | `APPROVED,CHANGES_REQUESTED,COMMENTED` |
+| Editor settings.json path | `EDITOR_SETTINGS` | `editorSettingsPath` | VS Code path |
+| State dir | `STATE_DIR` | `stateDir` | `~/.local/share/gh-pr-notifier` |
+| `gh` binary | `GH_BIN` | `ghBin` | from `PATH` |
+| `terminal-notifier` binary | `NOTIFIER_BIN` | `notifierBin` | from `PATH` |
+
+- **No VS Code?** Set `reviewQueueQuery` / `myPrsQuery` directly and `settings.json` is never read.
+- **Add/remove bots / stop notifying on approvals:** edit the query / `notifyReviewStates`.
+
+## Security notes
+
+- All subprocess calls use argv arrays (no shell); untrusted PR titles/logins can't inject flags
+  or shell commands. `terminal-notifier`'s `-execute` is never used, and `-open` only ever
+  receives an `https://` URL.
+- Repo/PR-number values from the API are validated before being placed in an API path.
+- `install.sh` pins **absolute** `gh`/`terminal-notifier` paths into the plist (no `PATH` hijack).
+- State/log hold internal repo names + PR titles, so they're created `0600` in a `0700` dir.
+
+> **GitHub search caps results at 100 per query.** For a personal review queue that's never a
+> problem, but a very broad query will silently truncate.
 
 ## Limitations
 

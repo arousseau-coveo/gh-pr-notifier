@@ -5,25 +5,53 @@
 // State is diffed between runs so only *new* items fire a notification.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 // ---- config -------------------------------------------------------------
-const SETTINGS = join(homedir(), "Library/Application Support/Code/User/settings.json");
-const STATE_DIR = join(homedir(), ".local/share/gh-pr-notifier");
-const STATE_FILE = join(STATE_DIR, "state.json");
-// Resolved via PATH (launchd sets PATH in the plist). Override with env if needed.
-const GH = process.env.GH_BIN || "gh";
-const NOTIFIER = process.env.NOTIFIER_BIN || "terminal-notifier";
+// Precedence for every setting: environment variable > config file > built-in default.
+// Config file: $GH_PR_NOTIFIER_CONFIG, else ~/.config/gh-pr-notifier/config.json (JSON).
+// See config.example.json for all keys.
+const CONFIG_PATH = process.env.GH_PR_NOTIFIER_CONFIG
+  || join(homedir(), ".config/gh-pr-notifier/config.json");
 
-const REVIEW_QUEUE_LABEL = "🔍 Needs my review (no bots)";
-const MY_PRS_LABEL = "My PRs";
-// Review states on my PRs worth a ping.
-const NOTIFY_REVIEW_STATES = new Set(["APPROVED", "CHANGES_REQUESTED", "COMMENTED"]);
+function loadConfigFile() {
+  if (!existsSync(CONFIG_PATH)) return {};
+  try { return JSON.parse(readFileSync(CONFIG_PATH, "utf8")); }
+  catch (e) { console.error(`Ignoring invalid config ${CONFIG_PATH}: ${e.message}`); return {}; }
+}
+const FILE = loadConfigFile();
+const env = (k) => { const v = process.env[k]; return v === undefined || v === "" ? undefined : v; };
+const pick = (envKey, fileKey, dflt) => env(envKey) ?? FILE[fileKey] ?? dflt;
+
+const SETTINGS = pick("EDITOR_SETTINGS", "editorSettingsPath",
+  join(homedir(), "Library/Application Support/Code/User/settings.json"));
+const STATE_DIR = pick("STATE_DIR", "stateDir", join(homedir(), ".local/share/gh-pr-notifier"));
+const STATE_FILE = join(STATE_DIR, "state.json");
+const GH = pick("GH_BIN", "ghBin", "gh");
+const NOTIFIER = pick("NOTIFIER_BIN", "notifierBin", "terminal-notifier");
+
+const REVIEW_QUEUE_LABEL = pick("REVIEW_QUEUE_LABEL", "reviewQueueLabel", "🔍 Needs my review (no bots)");
+const MY_PRS_LABEL = pick("MY_PRS_LABEL", "myPrsLabel", "My PRs");
+// Optional: supply the search query directly and skip the editor-settings lookup entirely
+// (lets the tool run with no VS Code / no settings.json at all).
+const REVIEW_QUEUE_QUERY = pick("REVIEW_QUEUE_QUERY", "reviewQueueQuery", null);
+const MY_PRS_QUERY = pick("MY_PRS_QUERY", "myPrsQuery", null);
+
+// Review states on my PRs worth a ping. Env = comma-separated; file = array or string.
+const parseStates = (v) => (Array.isArray(v) ? v : String(v).split(","))
+  .map((s) => s.trim().toUpperCase()).filter(Boolean);
+const NOTIFY_REVIEW_STATES = new Set(parseStates(
+  env("NOTIFY_REVIEW_STATES") ?? FILE.notifyReviewStates ?? "APPROVED,CHANGES_REQUESTED,COMMENTED"));
 // -------------------------------------------------------------------------
 
 const isBot = (login) => !login || /\[bot\]$/i.test(login) || /\bbot\b/i.test(login);
+
+// "owner/name" with only the chars GitHub actually allows in each segment.
+const isValidRepo = (r) => /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(r);
+// Only ever hand terminal-notifier an https URL to open (defense-in-depth vs file:/javascript:).
+const safeOpenUrl = (u) => (typeof u === "string" && /^https:\/\//.test(u) ? u : null);
 
 function gh(path, args = []) {
   const out = execFileSync(GH, ["api", ...args, path], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
@@ -36,30 +64,38 @@ function search(query) {
 }
 
 function notify({ title, subtitle, message, url, group }) {
-  try {
-    execFileSync(NOTIFIER, [
-      "-title", title,
-      "-subtitle", subtitle || "",
-      "-message", message,
-      "-open", url,
-      "-group", group,
-    ], { stdio: "ignore" });
-  } catch (e) {
-    console.error("notify failed:", e.message);
-  }
+  // Args are passed as an array (no shell), and each untrusted value occupies a single
+  // slot already claimed as a flag value — so a crafted PR title cannot inject a new flag.
+  const args = ["-title", title, "-subtitle", subtitle || "", "-message", message, "-group", group];
+  const open = safeOpenUrl(url);
+  if (open) args.push("-open", open); // only ever open an https URL
+  try { execFileSync(NOTIFIER, args, { stdio: "ignore" }); }
+  catch (e) { console.error("notify failed:", e.message); }
 }
 
-// Strip JSONC comments + trailing commas, then parse.
-// The query strings contain no `//`, `/*`, or escaped quotes, so a naive strip is safe here.
+// Resolve the two search queries. A directly-configured query wins; otherwise look it up by
+// label in the editor's settings.json. The settings file is only read if at least one query
+// still needs it, so the tool works fine with no editor installed.
 function readQueries() {
-  let raw = readFileSync(SETTINGS, "utf8");
-  raw = raw.replace(/\/\*[\s\S]*?\*\//g, "");        // block comments
-  raw = raw.replace(/(^|[^:"'])\/\/.*$/gm, "$1");    // line comments (won't touch `://` in URLs)
-  raw = raw.replace(/,(\s*[}\]])/g, "$1");           // trailing commas
-  const cfg = JSON.parse(raw);
-  const q = cfg["githubPullRequests.queries"] || [];
-  const byLabel = (label) => (q.find((x) => x.label === label) || {}).query;
-  return { reviewQueue: byLabel(REVIEW_QUEUE_LABEL), myPrs: byLabel(MY_PRS_LABEL) };
+  let byLabel = () => undefined;
+  if (!REVIEW_QUEUE_QUERY || !MY_PRS_QUERY) {
+    try {
+      // Strip JSONC comments + trailing commas, then parse.
+      let raw = readFileSync(SETTINGS, "utf8");
+      raw = raw.replace(/\/\*[\s\S]*?\*\//g, "");        // block comments
+      raw = raw.replace(/(^|[^:"'])\/\/.*$/gm, "$1");    // line comments (won't touch `://`)
+      raw = raw.replace(/,(\s*[}\]])/g, "$1");           // trailing commas
+      const cfg = JSON.parse(raw);
+      const q = cfg["githubPullRequests.queries"] || [];
+      byLabel = (label) => (q.find((x) => x.label === label) || {}).query;
+    } catch (e) {
+      console.error(`Could not read editor settings ${SETTINGS}: ${e.message}`);
+    }
+  }
+  return {
+    reviewQueue: REVIEW_QUEUE_QUERY || byLabel(REVIEW_QUEUE_LABEL),
+    myPrs: MY_PRS_QUERY || byLabel(MY_PRS_LABEL),
+  };
 }
 
 function loadState() {
@@ -69,8 +105,10 @@ function loadState() {
 }
 
 function saveState(state) {
-  mkdirSync(STATE_DIR, { recursive: true });
-  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  // Restrict to the owner: state/log expose internal repo names and PR titles.
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
+  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), { mode: 0o600 });
+  try { chmodSync(STATE_FILE, 0o600); } catch { /* best effort if pre-existing */ }
 }
 
 // -------------------------------------------------------------------------
@@ -109,10 +147,16 @@ function main() {
     const myItems = search(q);
     const prevReviews = prev?.myPrReviews || {};
     for (const it of myItems) {
-      const repo = it.repository_url.split("/repos/")[1]; // owner/name
+      const repo = (it.repository_url || "").split("/repos/")[1] || ""; // owner/name
       const num = it.number;
+      // Validate before interpolating into an API path (prevents `..`/path-traversal redirection).
+      if (!isValidRepo(repo) || !Number.isInteger(num) || num <= 0) {
+        console.error(`skip invalid repo/num: ${repo}#${num}`);
+        continue;
+      }
+      const [owner, name] = repo.split("/");
       let reviews = [];
-      try { reviews = gh(`repos/${repo}/pulls/${num}/reviews?per_page=100`); }
+      try { reviews = gh(`repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${num}/reviews?per_page=100`); }
       catch (e) { console.error(`reviews ${repo}#${num}:`, e.message); continue; }
       for (const r of reviews) {
         const id = String(r.id);

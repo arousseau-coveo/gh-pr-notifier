@@ -1,0 +1,16 @@
+{
+  "_comment": "Optional. Copy to ~/.config/gh-pr-notifier/config.json (or point GH_PR_NOTIFIER_CONFIG at it). Every key is optional; precedence is env var > this file > built-in default. Delete keys you don't override.",
+
+  "reviewQueueLabel": "🔍 Needs my review (no bots)",
+  "myPrsLabel": "My PRs",
+
+  "reviewQueueQuery": "is:open is:pr review-requested:${user} -author:app/dependabot",
+  "myPrsQuery": "is:open is:pr author:${user}",
+
+  "notifyReviewStates": ["APPROVED", "CHANGES_REQUESTED", "COMMENTED"],
+
+  "editorSettingsPath": "/Users/you/Library/Application Support/Code/User/settings.json",
+  "stateDir": "/Users/you/.local/share/gh-pr-notifier",
+  "ghBin": "/opt/homebrew/bin/gh",
+  "notifierBin": "/opt/homebrew/bin/terminal-notifier"
+}
