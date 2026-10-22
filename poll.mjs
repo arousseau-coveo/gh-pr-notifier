@@ -106,6 +106,32 @@ function notify({ title, subtitle, message, url, group }) {
   catch (e) { console.error("notify failed:", e.message); }
 }
 
+// Strip JSONC comments + trailing commas. String-aware: regexes mangle globs like "**/.tox/**",
+// whose `/**` reads as a block-comment opener.
+function stripJsonc(src) {
+  let out = "";
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < src.length && src[j] !== '"') j += src[j] === "\\" ? 2 : 1;
+      out += src.slice(i, j + 1);
+      i = j;
+    } else if (c === "/" && src[i + 1] === "/") {
+      while (i < src.length && src[i] !== "\n") i++;
+      out += "\n";
+    } else if (c === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      i = end === -1 ? src.length : end + 1;
+    } else if (c === "}" || c === "]") {
+      out = out.replace(/,(\s*)$/, "$1") + c;   // drop a trailing comma (comments already gone)
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
 // Resolve the two search queries. A directly-configured query wins; otherwise look it up by
 // label in the editor's settings.json. The settings file is only read if at least one query
 // still needs it, so the tool works fine with no editor installed.
@@ -113,12 +139,7 @@ function readQueries() {
   let byLabel = () => undefined;
   if (!REVIEW_QUEUE_QUERY || !MY_PRS_QUERY) {
     try {
-      // Strip JSONC comments + trailing commas, then parse.
-      let raw = readFileSync(SETTINGS, "utf8");
-      raw = raw.replace(/\/\*[\s\S]*?\*\//g, "");        // block comments
-      raw = raw.replace(/(^|[^:"'])\/\/.*$/gm, "$1");    // line comments (won't touch `://`)
-      raw = raw.replace(/,(\s*[}\]])/g, "$1");           // trailing commas
-      const cfg = JSON.parse(raw);
+      const cfg = JSON.parse(stripJsonc(readFileSync(SETTINGS, "utf8")));
       const q = cfg["githubPullRequests.queries"] || [];
       byLabel = (label) => (q.find((x) => x.label === label) || {}).query;
     } catch (e) {
